@@ -1,15 +1,21 @@
+﻿    // 从TID二级索引中获取前一天所有记录，格式：RDD[(plateColor, plateNo, vehicleLogo, VPR_RowKey, passTime, vehicleType，isTaxi)]
     val tidIdxResultRDD: RDD[(Int, String, String, String, Long, String, Int)] = getVehiclePassIdxTIDRDD(sc, longStart,longEnd, hbaseZk)
 
     LOGGER.info("tidIdxResultRDD count={}", tidIdxResultRDD.count)
+    // 获取时间标示
     val curMonTime = DateTimeUtils.format(longStart, "yyyy-MM")
 
+    // 按车牌前缀过滤 RDD[(plateColor, plateNo, vehicleLogo, VPR_RowKey, passTime, vehicleType，isTaxi)]
     val filterByPrefixRDD: RDD[(Int, String, String, String, Long, String, Int)] = tidIdxResultRDD.filter(res => {
     })
 
+    // 获取车管库RDD，格式：RDD[(plateColor, plateNo, vehicleLogo, logoName, vehicletype)]
     val vehicleRegisterRDD: RDD[(Int, String, String, String, String)] = oracle2RddUtil.loadCgkRdd1(sc)
 
     LOGGER.info("vehicleRegisterRDD count={}", vehicleRegisterRDD.count)
 
+    //获取未审核的已存在的假牌记录
+    //返回类型[(platecolor,plateno,vehlogo,restype, isTaxi),rowkeys]
 
     val pgUtils2: PostgresUtils= PostgresUtils.getInstance()
 
@@ -25,13 +31,16 @@
       LOGGER.info("do false")
 
 
+      // 执行假牌分析，格式：RDD[(plateColor, plateNo)]
       fakePlateList = analysisFakePlateList(filterByPrefixRDD, vehicleRegisterRDD, threshold)
 
+      // 从原始二级索引集合中过滤并获取相同车牌首条记录，格式：RDD[(plateColor, plateNo, VPR_RowKey)]
       val set = fakePlateList.toSet
       LOGGER.info("falseplate result size {}",set.size)
       val tempRdd: RDD[((Int, String,Int), (String,Long))] = tidIdxResultRDD.filter(res => {
         set.contains((1, res._2))
       }).sortBy(res => {
+        // 按过车时间排序
         res._5
       }).map(res => {
         ((res._1, res._2,res._7), (res._4,res._5))
