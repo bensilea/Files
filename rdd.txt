@@ -7,6 +7,7 @@
 
     // 按车牌前缀过滤 RDD[(plateColor, plateNo, vehicleLogo, VPR_RowKey, passTime, vehicleType，isTaxi)]
     val filterByPrefixRDD: RDD[(Int, String, String, String, Long, String, Int)] = tidIdxResultRDD.filter(res => {
+      res._1 > 0 && res._2 != null && res._2.startsWith(plateNoPrefix) && (!"车牌".equals(res._2))
     })
 
     // 获取车管库RDD，格式：RDD[(plateColor, plateNo, vehicleLogo, logoName, vehicletype)]
