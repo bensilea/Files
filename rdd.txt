@@ -1,0 +1,52 @@
+    val tidIdxResultRDD: RDD[(Int, String, String, String, Long, String, Int)] = getVehiclePassIdxTIDRDD(sc, longStart,longEnd, hbaseZk)
+
+    LOGGER.info("tidIdxResultRDD count={}", tidIdxResultRDD.count)
+    val curMonTime = DateTimeUtils.format(longStart, "yyyy-MM")
+
+    val filterByPrefixRDD: RDD[(Int, String, String, String, Long, String, Int)] = tidIdxResultRDD.filter(res => {
+    })
+
+    val vehicleRegisterRDD: RDD[(Int, String, String, String, String)] = oracle2RddUtil.loadCgkRdd1(sc)
+
+    LOGGER.info("vehicleRegisterRDD count={}", vehicleRegisterRDD.count)
+
+
+    val pgUtils2: PostgresUtils= PostgresUtils.getInstance()
+
+    //RDD[(plate_color, false_plateno,rowkeys,restyp, isTaxi)]
+    val falsePlateRDD: RDD[((Int, String,Int,Int,Int), (Int,Int))] = pgUtils2.loadFalseRdd(sc,curMonTime)
+
+    LOGGER.info("pg old data {}",falsePlateRDD.count())
+
+    var fakePlateList: List[(Int, String)] = null
+
+    LOGGER.info("isFalseEnable {} and isFakeEnable {}",isFalseEnable,isFakeEnable)
+    if (isFalseEnable) {
+      LOGGER.info("do false")
+
+
+      fakePlateList = analysisFakePlateList(filterByPrefixRDD, vehicleRegisterRDD, threshold)
+
+      val set = fakePlateList.toSet
+      LOGGER.info("falseplate result size {}",set.size)
+      val tempRdd: RDD[((Int, String,Int), (String,Long))] = tidIdxResultRDD.filter(res => {
+        set.contains((1, res._2))
+      }).sortBy(res => {
+        res._5
+      }).map(res => {
+        ((res._1, res._2,res._7), (res._4,res._5))
+      })
+
+      LOGGER.info("tempRdd.collect()")
+      tempRdd.collect().foreach{println};
+
+      val fakePlateDestRDD: RDD[((Int, String,Int),String)] = tempRdd.reduceByKey((a,b) => {
+        ((a._1+a._2)+"|"+(b._1+b._2),0)
+      }).map(res => ((res._1),res._2._1))
+
+      LOGGER.info("fakePlateDestRDD.collect()")
+      fakePlateDestRDD.collect().foreach{println};
+
+      val pgUtils: PostgresUtils = PostgresUtils.getInstance()
+      val  fakeRdd:RDD[((Int,String,Int,Int),String)] =  fakePlateDestRDD.map(res => ((res._1._1,res._1._2,0,res._1._3),res._2)).cache()//[(plateColor,plateNo,0,istaxi),rowkey]
+      pgUtils.saveResultPgTable(fakeRdd,falsePlateRDD,curMonTime,0)
